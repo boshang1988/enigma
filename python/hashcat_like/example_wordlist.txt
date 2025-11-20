@@ -1,0 +1,5 @@
+# Example minimal wordlist for the sample hashes
+password
+password123
+letmein
+Password123

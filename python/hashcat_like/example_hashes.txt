@@ -1,0 +1,8 @@
+# Sample hashes for the password: password123
+sha256:ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f
+pbkdf2-sha256:120000:salt:48a99ed11c2f6ce4928ec2ad39db81f8f4d48039c8eed253e9a02f067d7a347c
+$pbkdf2-sha256$120000$salt$SKme0RwvbOSSjsKtOduB-PTUgDnI7tJT6aAvBn16NHw
+scrypt:16384:8:1:salt:3d47b5c77dee05a144663062b47de0b804e2b3cf15cd10ddb0f97a00776b6196
+$scrypt$14$8$1$salt$PUe1x33uBaFEZjBitH3guATis88VzRDdsPl6AHdrYZY
+$2b$12$3DqZavjWLJPe2GvtIL/UiunWx/HqbgSTuRWHKXHs6sp949/G/F7aa
+$argon2id$v=19$m=65536,t=3,p=2$kXw8azYV6p0LvLb7rSVMyQ$xU4kpGtT7IeyT1g8PK9hZjiIbXUr3ZLez7ayc8Qy3NI
