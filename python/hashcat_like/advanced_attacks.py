@@ -192,16 +192,22 @@ def combinator_attack(
 def prince_attack(
     wordlist_paths: List[str],
     max_length: int = 8,
-    mutate_mode: str = "simple",
+    mutate_mode: str = "none",
 ) -> Iterator[str]:
     """PRINCE attack - generate password candidates using PRINCE algorithm."""
     from .attacks import wordlist_candidates
     
     words = list(wordlist_candidates(wordlist_paths, mutate_mode=mutate_mode))
     
+    # Filter out comments and empty words
+    clean_words = [word for word in words if word and not word.startswith('#')]
+    
+    if not clean_words:
+        return
+    
     # Generate PRINCE-like combinations
-    for word1 in words:
-        for word2 in words:
+    for word1 in clean_words:
+        for word2 in clean_words:
             if word1 != word2:
                 combined = word1 + word2
                 if len(combined) <= max_length:
@@ -223,7 +229,10 @@ class MarkovModel:
     
     def train(self, passwords: List[str]) -> None:
         """Train the Markov model on a list of passwords."""
-        for password in passwords:
+        # Filter out comments and empty passwords
+        clean_passwords = [pwd for pwd in passwords if pwd and not pwd.startswith('#')]
+        
+        for password in clean_passwords:
             # Add start and end markers
             padded = "^" * self.order + password + "$"
             

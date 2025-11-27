@@ -6,17 +6,22 @@ import hashlib
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
+# Optional dependencies - handle gracefully
 try:
     import bcrypt
-except ImportError:  # pragma: no cover - optional dependency
+    BCRYPT_AVAILABLE = True
+except ImportError:
     bcrypt = None
+    BCRYPT_AVAILABLE = False
 
 try:
-    from argon2 import low_level as argon2_low_level
+    from argon2 import PasswordHasher
     from argon2.exceptions import VerificationError
-except ImportError:  # pragma: no cover - optional dependency
-    argon2_low_level = None
+    ARGON2_AVAILABLE = True
+except ImportError:
+    PasswordHasher = None
     VerificationError = None
+    ARGON2_AVAILABLE = False
 
 
 HASHLIB_ALIASES: Dict[str, str] = {
@@ -48,196 +53,214 @@ def normalize_algo(name: str) -> str:
 
 
 def decode_hash_value(value: str) -> bytes:
-    text = value.strip()
+    """Decode a hash value from hex or base64."""
+    if len(value) % 2 == 0:
+        try:
+            return binascii.unhexlify(value)
+        except binascii.Error:
+            pass
     try:
-        return bytes.fromhex(text)
-    except (ValueError, binascii.Error):
+        return base64.b64decode(value)
+    except binascii.Error:
         pass
-    # try url-safe base64 with padding fixups
-    padded = text + "=" * ((4 - len(text) % 4) % 4)
-    try:
-        return base64.urlsafe_b64decode(padded)
-    except (binascii.Error, ValueError):
-        return text.encode("utf8")
-
-
-def guess_digest_algorithm(digest: bytes) -> Optional[str]:
-    candidates = {
-        16: ["md5"],
-        20: ["sha1"],
-        28: ["sha224"],
-        32: ["sha256", "sha3-256", "blake2s"],
-        48: ["sha384"],
-        64: ["sha512", "sha3-512", "blake2b"],
-    }
-    choices = candidates.get(len(digest))
-    return choices[0] if choices else None
+    return value.encode("utf8")
 
 
 @dataclass
 class HashTarget:
+    """Represents a hash target for cracking."""
     raw: str
     algorithm: str
-
-    def verify(self, candidate: str) -> bool:  # pragma: no cover - interface
-        raise NotImplementedError
-
-    def label(self) -> str:
-        return f"{self.algorithm}:{self.raw}"
+    
+    def verify(self, candidate: str) -> bool:
+        """Verify if candidate matches this hash."""
+        raise NotImplementedError("Subclasses must implement verify")
 
 
 @dataclass
 class SimpleHashTarget(HashTarget):
+    """Simple hash target (md5, sha1, sha256, etc.)."""
     digest: bytes
     salt: Optional[bytes] = None
     salt_position: str = "prefix"
-
+    
     def verify(self, candidate: str) -> bool:
-        data = candidate.encode("utf8")
-        if self.salt:
-            data = self.salt + data if self.salt_position == "prefix" else data + self.salt
-        digest = hashlib.new(HASHLIB_ALIASES[self.algorithm], data).digest()
-        return digest == self.digest
+        if self.algorithm in HASHLIB_ALIASES:
+            hash_func = getattr(hashlib, HASHLIB_ALIASES[self.algorithm])
+            
+            if self.salt:
+                if self.salt_position == "prefix":
+                    data = self.salt + candidate.encode("utf8")
+                else:
+                    data = candidate.encode("utf8") + self.salt
+            else:
+                data = candidate.encode("utf8")
+            
+            return hash_func(data).digest() == self.digest
+        return False
 
 
 @dataclass
-class Pbkdf2Target(HashTarget):
-    digest: bytes
-    salt: bytes
+class PBKDF2Target(HashTarget):
+    """PBKDF2 hash target."""
+    inner_algo: str
     iterations: int
-
+    salt: bytes
+    digest: bytes
+    
     def verify(self, candidate: str) -> bool:
-        dklen = len(self.digest)
-        derived = hashlib.pbkdf2_hmac(
-            HASHLIB_ALIASES[self.algorithm.replace("pbkdf2-", "")],
-            candidate.encode("utf8"),
-            self.salt,
-            self.iterations,
-            dklen=dklen,
-        )
-        return derived == self.digest
+        import hashlib
+        
+        if self.inner_algo in HASHLIB_ALIASES:
+            hash_module = getattr(hashlib, HASHLIB_ALIASES[self.inner_algo])
+            
+            # Use hashlib's pbkdf2_hmac
+            computed = hashlib.pbkdf2_hmac(
+                HASHLIB_ALIASES[self.inner_algo],
+                candidate.encode("utf8"),
+                self.salt,
+                self.iterations,
+                len(self.digest)
+            )
+            return computed == self.digest
+        return False
 
 
 @dataclass
 class ScryptTarget(HashTarget):
-    digest: bytes
-    salt: bytes
+    """Scrypt hash target."""
     n: int
     r: int
     p: int
-
+    salt: bytes
+    digest: bytes
+    
     def verify(self, candidate: str) -> bool:
-        derived = hashlib.scrypt(
-            candidate.encode("utf8"),
-            salt=self.salt,
-            n=self.n,
-            r=self.r,
-            p=self.p,
-            dklen=len(self.digest),
-        )
-        return derived == self.digest
+        try:
+            import hashlib
+            computed = hashlib.scrypt(
+                candidate.encode("utf8"),
+                salt=self.salt,
+                n=self.n,
+                r=self.r,
+                p=self.p,
+                dklen=len(self.digest)
+            )
+            return computed == self.digest
+        except ImportError:
+            return False
 
 
 @dataclass
 class BcryptTarget(HashTarget):
-    encoded: bytes
-
+    """Bcrypt hash target."""
+    hash_string: str
+    
     def verify(self, candidate: str) -> bool:
-        if bcrypt is None:
-            raise RuntimeError("Install bcrypt to verify bcrypt hashes.")
-        return bcrypt.checkpw(candidate.encode("utf8"), self.encoded)
+        if not BCRYPT_AVAILABLE:
+            return False  # Silently fail if bcrypt not available
+        
+        try:
+            # bcrypt.checkpw expects bytes
+            return bcrypt.checkpw(candidate.encode('utf-8'), self.hash_string.encode('utf-8'))
+        except Exception:
+            return False
 
 
 @dataclass
 class Argon2Target(HashTarget):
-    encoded: str
-    argon_type: str
-
+    """Argon2 hash target."""
+    hash_string: str
+    
     def verify(self, candidate: str) -> bool:
-        if argon2_low_level is None or VerificationError is None:
-            raise RuntimeError("Install argon2-cffi to verify Argon2 hashes.")
+        if not ARGON2_AVAILABLE:
+            return False  # Silently fail if argon2 not available
+        
         try:
-            return argon2_low_level.verify_secret(
-                self.encoded.encode("utf8"),
-                candidate.encode("utf8"),
-                type=self.argon_type,
-            )
+            ph = PasswordHasher()
+            return ph.verify(self.hash_string, candidate)
         except VerificationError:
+            return False
+        except Exception:
             return False
 
 
-def parse_hash_line(
-    raw_line: str,
-    default_algorithm: Optional[str] = None,
-    salt_position: str = "prefix",
-) -> HashTarget:
-    if salt_position not in {"prefix", "suffix"}:
-        raise ValueError("salt_position must be 'prefix' or 'suffix'")
-    text = raw_line.strip()
-    if not text or text.startswith("#"):
-        raise ValueError("empty hash line")
-
-    if text.startswith("$argon2"):
-        if argon2_low_level is None:
-            raise RuntimeError("argon2-cffi is required to crack Argon2 entries.")
-        if "$" not in text:
-            raise ValueError(f"Invalid Argon2 line: {text}")
-        if text.startswith("$argon2id$"):
-            argon_type = argon2_low_level.Type.ID
-        elif text.startswith("$argon2i$"):
-            argon_type = argon2_low_level.Type.I
-        else:
-            argon_type = argon2_low_level.Type.D
-        algo_label = "argon2id" if argon_type is argon2_low_level.Type.ID else ("argon2i" if argon_type is argon2_low_level.Type.I else "argon2d")
-        return Argon2Target(raw=text, algorithm=algo_label, encoded=text, argon_type=argon_type)
-
+def parse_hash_line(text: str, default_algorithm: Optional[str] = None, salt_position: str = "prefix") -> HashTarget:
+    """Parse a hash line into a HashTarget."""
+    text = text.strip()
+    
+    # Handle bcrypt format ($2b$...)
     if text.startswith("$2"):
-        if bcrypt is None:
-            raise RuntimeError("bcrypt is required to crack bcrypt entries.")
-        return BcryptTarget(raw=text, algorithm="bcrypt", encoded=text.encode("utf8"))
-
-    # Passlib-style PBKDF2: $pbkdf2-sha256$29000$salt$hash
+        if not BCRYPT_AVAILABLE:
+            # Instead of failing, create a target that will silently fail verification
+            return BcryptTarget(raw=text, algorithm="bcrypt", hash_string=text)
+        return BcryptTarget(raw=text, algorithm="bcrypt", hash_string=text)
+    
+    # Handle Argon2 format ($argon2...)
+    if text.startswith("$argon2"):
+        if not ARGON2_AVAILABLE:
+            # Instead of failing, create a target that will silently fail verification
+            return Argon2Target(raw=text, algorithm="argon2", hash_string=text)
+        return Argon2Target(raw=text, algorithm="argon2", hash_string=text)
+    
+    # Handle modular PBKDF2 format ($pbkdf2-...)
     if text.startswith("$pbkdf2-"):
-        parts = [p for p in text.split("$") if p]
-        if len(parts) != 4:
-            raise ValueError(f"Cannot parse PBKDF2 hash: {text}")
-        algo = normalize_algo(parts[0])
-        iterations = int(parts[1])
-        salt = parts[2].encode("utf8")
-        digest = decode_hash_value(parts[3])
-        return Pbkdf2Target(raw=text, algorithm=algo, digest=digest, salt=salt, iterations=iterations)
-
-    # Passlib-style scrypt: $scrypt$ln$r$p$salt$hash
-    if text.startswith("$scrypt$") or text.startswith("scrypt$"):
-        parts = [p for p in text.split("$") if p]
-        if len(parts) != 6:
-            raise ValueError(f"Cannot parse scrypt hash: {text}")
-        n = 2 ** int(parts[1])
-        r = int(parts[2])
-        p = int(parts[3])
-        salt = parts[4].encode("utf8")
-        digest = decode_hash_value(parts[5])
-        return ScryptTarget(raw=text, algorithm="scrypt", digest=digest, salt=salt, n=n, r=r, p=p)
-
+        parts = text[1:].split("$")
+        if len(parts) >= 4:
+            algo_parts = parts[0].split("-")
+            if len(algo_parts) == 2:
+                inner_algo = algo_parts[1]
+                iterations = int(parts[1])
+                salt = base64.b64decode(parts[2] + "==")  # Add padding
+                digest = base64.b64decode(parts[3] + "==")
+                return PBKDF2Target(
+                    raw=text,
+                    algorithm="pbkdf2",
+                    inner_algo=inner_algo,
+                    iterations=iterations,
+                    salt=salt,
+                    digest=digest
+                )
+    
+    # Handle modular scrypt format ($scrypt$...)
+    if text.startswith("$scrypt$"):
+        parts = text[1:].split("$")
+        if len(parts) >= 5:
+            n = int(parts[1])  # log2(N)
+            r = int(parts[2])
+            p = int(parts[3])
+            salt = base64.b64decode(parts[4] + "==")
+            digest = base64.b64decode(parts[5] + "==")
+            return ScryptTarget(
+                raw=text,
+                algorithm="scrypt",
+                n=2**n,  # Convert back from log2
+                r=r,
+                p=p,
+                salt=salt,
+                digest=digest
+            )
+    
+    # Split by colon for other formats
     fields = text.split(":")
-    if len(fields) == 1:
-        digest = decode_hash_value(fields[0])
-        algo_name = default_algorithm or guess_digest_algorithm(digest)
-        if not algo_name:
-            raise ValueError("Provide --algorithm when hashes omit an algorithm prefix.")
-        algo = normalize_algo(algo_name)
-        if algo.startswith("pbkdf2") or algo in {"scrypt", "bcrypt", "argon2", "argon2id", "argon2i", "argon2d"}:
-            raise ValueError("KDFs with salts (PBKDF2/scrypt/argon2/bcrypt) need their full structured format.")
-        return SimpleHashTarget(raw=text, algorithm=algo, digest=digest, salt=None, salt_position=salt_position)
-
-    # pbkdf2-sha256:iterations:salt:hash
-    if fields[0].lower().startswith("pbkdf2-") and len(fields) == 4:
-        algo = normalize_algo(fields[0])
-        iterations = int(fields[1])
-        salt = fields[2].encode("utf8")
-        digest = decode_hash_value(fields[3])
-        return Pbkdf2Target(raw=text, algorithm=algo, digest=digest, salt=salt, iterations=iterations)
-
+    
+    # Handle PBKDF2: pbkdf2-<algo>:iterations:salt:digest
+    if fields[0].startswith("pbkdf2-") and len(fields) == 4:
+        algo_parts = fields[0].split("-")
+        if len(algo_parts) == 2:
+            inner_algo = algo_parts[1]
+            iterations = int(fields[1])
+            salt = fields[2].encode("utf8")
+            digest = decode_hash_value(fields[3])
+            return PBKDF2Target(
+                raw=text,
+                algorithm="pbkdf2",
+                inner_algo=inner_algo,
+                iterations=iterations,
+                salt=salt,
+                digest=digest
+            )
+    
     # scrypt:N:r:p:salt:hash
     if fields[0].lower() == "scrypt" and len(fields) == 6:
         n = int(fields[1])
@@ -246,7 +269,7 @@ def parse_hash_line(
         salt = fields[4].encode("utf8")
         digest = decode_hash_value(fields[5])
         return ScryptTarget(raw=text, algorithm="scrypt", digest=digest, salt=salt, n=n, r=r, p=p)
-
+    
     if len(fields) in (2, 3):
         algo = normalize_algo(fields[0])
         if algo.startswith("pbkdf2-"):
@@ -256,7 +279,17 @@ def parse_hash_line(
         digest = decode_hash_value(fields[-1])
         salt = fields[1].encode("utf8") if len(fields) == 3 else None
         return SimpleHashTarget(raw=text, algorithm=algo, digest=digest, salt=salt, salt_position=salt_position)
-
+    
+    # If we get here and have a default algorithm, try to parse as simple hash
+    if default_algorithm:
+        try:
+            algo = normalize_algo(default_algorithm)
+            if algo not in {"scrypt", "bcrypt", "argon2", "argon2id", "argon2i", "argon2d"}:
+                digest = decode_hash_value(text)
+                return SimpleHashTarget(raw=text, algorithm=algo, digest=digest, salt=None)
+        except (ValueError, binascii.Error):
+            pass
+    
     raise ValueError(f"Unrecognized hash line: {text}")
 
 

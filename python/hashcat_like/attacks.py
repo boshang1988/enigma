@@ -20,11 +20,21 @@ def mutate_word(word: str, mode: str = "simple") -> Iterator[str]:
     if not token:
         return
 
+    # Skip comments
+    if token.startswith('#'):
+        return
+
     seen = set()
+    
+    if mode == "none":
+        # No mutation - just yield the word as-is
+        yield token
+        return
+    
     forms = {token, token.lower(), token.upper(), token.title()}
     suffixes = ["", "1", "!", "123", "2024", "2025"]
-    if mode == "none":
-        suffixes = [""]
+    if mode == "simple":
+        suffixes = ["", "1", "123"]
 
     def emit(form: str) -> Iterator[str]:
         for suffix in suffixes:
