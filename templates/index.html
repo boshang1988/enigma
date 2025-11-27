@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enigma Hashcat - Web Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+        }
+
+        .panel h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #229954);
+        }
+
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #2ecc71);
+            transition: width 0.3s;
+            border-radius: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-idle { background: #95a5a6; }
+        .status-running { background: #f39c12; animation: pulse 1s infinite; }
+        .status-completed { background: #27ae60; }
+        .status-error { background: #e74c3c; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+        .file-upload {
+            border: 2px dashed #bdc3c7;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        .file-upload:hover {
+            border-color: #3498db;
+        }
+
+        .file-upload input {
+            display: none;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Enigma Hashcat</h1>
+            <p>Modern Password Recovery Toolkit - Web Interface</p>
+        </div>
+
+        <div class="content">
+            <!-- Configuration Panel -->
+            <div class="panel">
+                <h2>⚙️ Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="hashFile">Hash File:</label>
+                    <div class="file-upload" onclick="document.getElementById('hashFile').click()">
+                        <p>📁 Click to upload hash file</p>
+                        <small>Supported formats: .txt, .hash</small>
+                        <input type="file" id="hashFile" accept=".txt,.hash">
+                    </div>
+                    <div id="hashFileInfo"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="wordlistFile">Wordlist File:</label>
+                    <div class="file-upload" onclick="document.getElementById('wordlistFile').click()">
+                        <p>📁 Click to upload wordlist</p>
+                        <small>Supported formats: .txt</small>
+                        <input type="file" id="wordlistFile" accept=".txt">
+                    </div>
+                    <div id="wordlistFileInfo"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="attackMode">Attack Mode:</label>
+                    <select id="attackMode" class="form-control">
+                        <option value="dictionary">Dictionary Attack</option>
+                        <option value="mask">Mask Attack</option>
+                        <option value="hybrid">Hybrid Attack</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="maskGroup" style="display: none;">
+                    <label for="mask">Mask Pattern:</label>
+                    <input type="text" id="mask" class="form-control" placeholder="?d?d?d?d (4-digit PIN)">
+                    <small>Use ?l (lower), ?u (upper), ?d (digit), ?s (symbol)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="algorithm">Default Algorithm:</label>
+                    <select id="algorithm" class="form-control">
+                        <option value="">Auto-detect</option>
+                        <option value="md5">MD5</option>
+                        <option value="sha1">SHA1</option>
+                        <option value="sha256">SHA256</option>
+                        <option value="sha512">SHA512</option>
+                        <option value="bcrypt">BCrypt</option>
+                        <option value="argon2id">Argon2id</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-success" onclick="startCracking()">🚀 Start Cracking</button>
+                <button class="btn btn-danger" onclick="stopCracking()" style="display: none;" id="stopBtn">⏹️ Stop</button>
+            </div>
+
+            <!-- Progress & Results Panel -->
+            <div class="panel">
+                <h2>📊 Progress & Results</h2>
+                
+                <div id="statusPanel">
+                    <div class="form-group">
+                        <label>Session Status:</label>
+                        <div id="sessionStatus">
+                            <span class="status-indicator status-idle"></span>
+                            <span>Idle</span>
+                        </div>
+                    </div>
+
+                    <div class="progress-container">
+                        <label>Progress:</label>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%;" id="progressFill"></div>
+                        </div>
+                        <div id="progressText">0% (0 candidates tested)</div>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-number" id="candidatesTested">0</div>
+                            <div class="stat-label">Candidates Tested</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="matchesFound">0</div>
+                            <div class="stat-label">Matches Found</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="targetsRemaining">0</div>
+                            <div class="stat-label">Targets Remaining</div>
+                        </div>
+                    </div>
+
+                    <div class="results" id="resultsContainer">
+                        <h3>🎯 Cracked Passwords</h3>
+                        <div id="resultsList">
+                            <p style="text-align: center; color: #7f8c8d;">No results yet...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let statusInterval = null;
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            
+            const container = document.querySelector('.container');
+            container.insertBefore(alert, container.firstChild);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Start cracking session
+        async function startCracking() {
+            const hashFile = document.getElementById('hashFile').files[0];
+            const wordlistFile = document.getElementById('wordlistFile').files[0];
+            const attackMode = document.getElementById('attackMode').value;
+            const algorithm = document.getElementById('algorithm').value;
+            const mask = document.getElementById('mask').value;
+
+            if (!hashFile) {
+                showAlert('Please upload a hash file', 'error');
+                return;
+            }
+
+            if (attackMode !== 'mask' && !wordlistFile) {
+                showAlert('Please upload a wordlist file', 'error');
+                return;
+            }
+
+            showAlert('Starting cracking session...', 'success');
+            
+            // Update UI
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('sessionStatus').innerHTML = '<span class="status-indicator status-running"></span><span>Running</span>';
+        }
+
+        // Stop cracking session
+        function stopCracking() {
+            if (statusInterval) clearInterval(statusInterval);
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('sessionStatus').innerHTML = '<span class="status-indicator status-idle"></span><span>Idle</span>';
+            showAlert('Cracking session stopped', 'success');
+        }
+
+        // Update progress display
+        function updateProgress(data) {
+            document.getElementById('progressFill').style.width = data.progress + '%';
+            document.getElementById('progressText').textContent = 
+                data.progress.toFixed(1) + '% (' + data.candidates_tested.toLocaleString() + ' candidates tested)';
+            
+            document.getElementById('candidatesTested').textContent = data.candidates_tested.toLocaleString();
+            document.getElementById('matchesFound').textContent = data.matches_found;
+            
+            // Update session status
+            const statusElement = document.getElementById('sessionStatus');
+            statusElement.innerHTML = '<span class="status-indicator status-running"></span><span>Running</span>';
+        }
+
+        // Handle file upload display
+        document.getElementById('hashFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('hashFileInfo').innerHTML = 
+                    `<p><strong>Selected:</strong> ${file.name} (${(file.size / 1024).toFixed(1)} KB)</p>`;
+            }
+        });
+
+        document.getElementById('wordlistFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('wordlistFileInfo').innerHTML = 
+                    `<p><strong>Selected:</strong> ${file.name} (${(file.size / 1024).toFixed(1)} KB)</p>`;
+            }
+        });
+
+        // Show/hide mask input based on attack mode
+        document.getElementById('attackMode').addEventListener('change', function(e) {
+            const maskGroup = document.getElementById('maskGroup');
+            if (e.target.value === 'mask') {
+                maskGroup.style.display = 'block';
+            } else {
+                maskGroup.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
