@@ -15,6 +15,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from .core import HashTarget, SimpleHashTarget
+from .gpu_acceleration import detect_gpu, get_gpu_performance
 
 
 class BenchmarkResult:
@@ -47,30 +48,66 @@ class BenchmarkSuite:
         
         end_time = time.time()
         duration = end_time - start_time
-        hashes_per_second = self.iterations / duration
+        hashes_per_second = self.iterations / duration if duration > 0 else 0
         
         return BenchmarkResult(algorithm, hashes_per_second, duration)
     
-    def benchmark_pbkdf2(self, algorithm: str) -> BenchmarkResult:
+    def benchmark_pbkdf2(self, algorithm: str, iterations: int = 1000) -> BenchmarkResult:
         """Benchmark PBKDF2 algorithm."""
         import hashlib
         
         start_time = time.time()
         
-        for i in range(self.iterations // 10):  # PBKDF2 is slower
-            test_password = f"{self.test_password}{i}"
+        for i in range(iterations):
             hashlib.pbkdf2_hmac(
                 algorithm.replace("pbkdf2-", ""),
-                test_password.encode(),
+                self.test_password.encode(),
                 self.test_salt,
-                1000,  # Reduced iterations for benchmarking
+                iterations=1000
             )
         
         end_time = time.time()
         duration = end_time - start_time
-        hashes_per_second = (self.iterations // 10) / duration
+        hashes_per_second = iterations / duration if duration > 0 else 0
         
         return BenchmarkResult(algorithm, hashes_per_second, duration)
+    
+    def benchmark_bcrypt(self, rounds: int = 12) -> BenchmarkResult:
+        """Benchmark bcrypt algorithm."""
+        try:
+            import bcrypt
+            
+            start_time = time.time()
+            
+            for i in range(100):  # bcrypt is slow, so fewer iterations
+                bcrypt.hashpw(self.test_password.encode(), bcrypt.gensalt(rounds=rounds))
+            
+            end_time = time.time()
+            duration = end_time - start_time
+            hashes_per_second = 100 / duration if duration > 0 else 0
+            
+            return BenchmarkResult(f"bcrypt-{rounds}", hashes_per_second, duration)
+        except ImportError:
+            return BenchmarkResult(f"bcrypt-{rounds}", 0, 0)
+    
+    def benchmark_argon2(self, variant: str = "argon2id") -> BenchmarkResult:
+        """Benchmark Argon2 algorithm."""
+        try:
+            from argon2 import PasswordHasher
+            
+            ph = PasswordHasher()
+            start_time = time.time()
+            
+            for i in range(100):  # Argon2 is slow, so fewer iterations
+                ph.hash(self.test_password)
+            
+            end_time = time.time()
+            duration = end_time - start_time
+            hashes_per_second = 100 / duration if duration > 0 else 0
+            
+            return BenchmarkResult(variant, hashes_per_second, duration)
+        except ImportError:
+            return BenchmarkResult(variant, 0, 0)
     
     def benchmark_scrypt(self) -> BenchmarkResult:
         """Benchmark scrypt algorithm."""
@@ -78,131 +115,74 @@ class BenchmarkSuite:
         
         start_time = time.time()
         
-        for i in range(self.iterations // 100):  # scrypt is much slower
-            test_password = f"{self.test_password}{i}"
+        for i in range(100):  # scrypt is slow, so fewer iterations
             hashlib.scrypt(
-                test_password.encode(),
+                self.test_password.encode(),
                 salt=self.test_salt,
-                n=1024,  # Reduced for benchmarking
+                n=16384,
                 r=8,
-                p=1,
+                p=1
             )
         
         end_time = time.time()
         duration = end_time - start_time
-        hashes_per_second = (self.iterations // 100) / duration
+        hashes_per_second = 100 / duration if duration > 0 else 0
         
         return BenchmarkResult("scrypt", hashes_per_second, duration)
     
-    def run_full_benchmark(self) -> Dict[str, BenchmarkResult]:
-        """Run comprehensive benchmark of all supported algorithms."""
+    def run_all(self) -> Dict[str, BenchmarkResult]:
+        """Run comprehensive benchmarks for all supported algorithms."""
+        print("Running comprehensive benchmarks...")
+        print("=" * 60)
+        
         results = {}
         
         # Simple hashes
         simple_hashes = ["md5", "sha1", "sha256", "sha512", "sha3-256", "blake2b"]
-        
         for algo in simple_hashes:
-            print(f"Benchmarking {algo}...")
-            try:
-                results[algo] = self.benchmark_simple_hash(algo)
-            except Exception as e:
-                print(f"  Failed to benchmark {algo}: {e}")
+            print(f"Benchmarking {algo}...", end=" ")
+            result = self.benchmark_simple_hash(algo)
+            results[algo] = result
+            print(f"{result.hashes_per_second:,.0f} H/s")
         
         # PBKDF2 variants
-        pbkdf2_hashes = ["pbkdf2-sha256", "pbkdf2-sha512"]
+        pbkdf2_algos = ["pbkdf2-sha256", "pbkdf2-sha512"]
+        for algo in pbkdf2_algos:
+            print(f"Benchmarking {algo}...", end=" ")
+            result = self.benchmark_pbkdf2(algo, iterations=100)
+            results[algo] = result
+            print(f"{result.hashes_per_second:,.1f} H/s")
         
-        for algo in pbkdf2_hashes:
-            print(f"Benchmarking {algo}...")
-            try:
-                results[algo] = self.benchmark_pbkdf2(algo)
-            except Exception as e:
-                print(f"  Failed to benchmark {algo}: {e}")
+        # Slow hashes
+        print(f"Benchmarking bcrypt...", end=" ")
+        bcrypt_result = self.benchmark_bcrypt()
+        results["bcrypt"] = bcrypt_result
+        print(f"{bcrypt_result.hashes_per_second:,.1f} H/s")
         
-        # Scrypt
-        print("Benchmarking scrypt...")
-        try:
-            results["scrypt"] = self.benchmark_scrypt()
-        except Exception as e:
-            print(f"  Failed to benchmark scrypt: {e}")
+        print(f"Benchmarking argon2id...", end=" ")
+        argon2_result = self.benchmark_argon2()
+        results["argon2id"] = argon2_result
+        print(f"{argon2_result.hashes_per_second:,.1f} H/s")
+        
+        print(f"Benchmarking scrypt...", end=" ")
+        scrypt_result = self.benchmark_scrypt()
+        results["scrypt"] = scrypt_result
+        print(f"{scrypt_result.hashes_per_second:,.1f} H/s")
+        
+        # GPU benchmarks
+        print("\nGPU Performance:")
+        gpu_perf = get_gpu_performance()
+        for device_id, hps in gpu_perf.items():
+            print(f"  GPU {device_id}: {hps:,.0f} H/s (estimated)")
+        
+        print("=" * 60)
+        print("Benchmark complete!")
         
         return results
-    
-    def print_results(self, results: Dict[str, BenchmarkResult]) -> None:
-        """Print benchmark results in a formatted table."""
-        print("\n" + "="*60)
-        print("ENIGMA HASHCAT BENCHMARK RESULTS")
-        print("="*60)
-        
-        # Sort by performance (descending)
-        sorted_results = sorted(
-            results.items(),
-            key=lambda x: x[1].hashes_per_second,
-            reverse=True
-        )
-        
-        for algo, result in sorted_results:
-            print(f"{algo:15} {result.hashes_per_second:>12,.0f} H/s")
-        
-        print("="*60)
-        
-        # Performance recommendations
-        fastest = sorted_results[0] if sorted_results else None
-        if fastest:
-            print(f"\nFastest algorithm: {fastest[0]} ({fastest[1].hashes_per_second:,.0f} H/s)")
-
-
-def detect_gpu() -> Optional[Dict[str, str]]:
-    """Detect available GPU hardware."""
-    try:
-        import subprocess
-        
-        # Try to detect NVIDIA GPU
-        try:
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            
-            if result.returncode == 0 and result.stdout.strip():
-                lines = result.stdout.strip().split('\n')
-                gpus = []
-                for line in lines:
-                    if ',' in line:
-                        name, memory = line.split(',', 1)
-                        gpus.append({
-                            'vendor': 'nvidia',
-                            'name': name.strip(),
-                            'memory': memory.strip(),
-                        })
-                return {'nvidia': gpus}
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
-        
-        # Try to detect AMD GPU
-        try:
-            result = subprocess.run(
-                ["rocm-smi", "--showproductname", "--showmeminfo", "vram"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            
-            if result.returncode == 0:
-                # Parse ROCm output (simplified)
-                return {'amd': [{'vendor': 'amd', 'name': 'AMD GPU', 'memory': 'unknown'}]}
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
-        
-    except Exception:
-        pass
-    
-    return None
 
 
 def system_info() -> Dict[str, str]:
-    """Get system information for performance assessment."""
+    """Get comprehensive system information."""
     import multiprocessing
     import platform
     import psutil
@@ -213,6 +193,7 @@ def system_info() -> Dict[str, str]:
         'processor': platform.processor(),
         'cpu_cores': str(multiprocessing.cpu_count()),
         'total_memory': f"{psutil.virtual_memory().total // (1024**3)} GB",
+        'available_memory': f"{psutil.virtual_memory().available // (1024**3)} GB",
     }
     
     # Detect GPU
