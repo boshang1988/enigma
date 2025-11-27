@@ -1,0 +1,56 @@
+{
+  "session_id": "demo",
+  "created_at": 1764269989.035203,
+  "last_updated": 1764269989.03534,
+  "targets": [
+    "sha256:ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
+  ],
+  "attack_mode": "dictionary",
+  "attack_params": {
+    "hashes": [
+      "sha256:ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
+    ],
+    "hash_files": [],
+    "algorithm": null,
+    "salt_position": "prefix",
+    "attack_mode": "dictionary",
+    "wordlists": [
+      "test.wordlist"
+    ],
+    "mutate": "simple",
+    "masks": [],
+    "append_mask": null,
+    "second_wordlist": [],
+    "rule_set": "basic",
+    "max_length": 8,
+    "markov_order": 2,
+    "markov_count": 1000,
+    "charset_lower": "abcdefghijklmnopqrstuvwxyz",
+    "charset_upper": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "charset_digit": "0123456789",
+    "charset_symbol": "!@#$%^&*()-_=+[]{};:'\",.<>/?\\|`~",
+    "save_session": "demo",
+    "restore": null,
+    "list_sessions": false,
+    "delete_session": null,
+    "export_session": null,
+    "export_format": "json",
+    "status_every": 0,
+    "max_candidates": null,
+    "keep_going": false,
+    "parallel": 1,
+    "benchmark": false,
+    "system_info": false
+  },
+  "candidates_tested": 46,
+  "matches_found": [
+    [
+      "sha256:ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+      "password123"
+    ]
+  ],
+  "cracked_targets": [
+    "sha256:ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f"
+  ],
+  "start_time": 1764269989.0352058
+}
