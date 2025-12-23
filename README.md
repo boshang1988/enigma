@@ -1,3 +1,8 @@
+# So I think
+
+<img width="674" height="1014" alt="image" src="https://github.com/user-attachments/assets/955e78eb-3199-44f4-9c1f-8de9ecbafe51" />
+
+
 # Enigma Hashcat
 A modern hashcat-like CLI for cracking common password hashes in 2025.
 
