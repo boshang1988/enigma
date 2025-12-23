@@ -1,4 +1,4 @@
-# So I really don't want to look at that piece of shit Twitch (quality > quantity always), however I thought about explaining how erosolar secured credentials and how to obtain them from Twitch and how to commit crimes with them
+# So I really don't want to look at that piece of shit Twitch (quality > quantity always), however I thought about explaining how erosolar secured credentials and how to obtain them from Twitch and how to commit crimes with them, OR explain why not; this is the key you must do it
 
 <img width="674" height="1014" alt="image" src="https://github.com/user-attachments/assets/955e78eb-3199-44f4-9c1f-8de9ecbafe51" />
 
